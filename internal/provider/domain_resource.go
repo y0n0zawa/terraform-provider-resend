@@ -3,8 +3,16 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	resend "github.com/resend/resend-go/v3"
 )
 
@@ -20,6 +28,29 @@ type domainResource struct {
 	client *resend.Client
 }
 
+type domainResourceModel struct {
+	ID               types.String `tfsdk:"id"`
+	Name             types.String `tfsdk:"name"`
+	Region           types.String `tfsdk:"region"`
+	CustomReturnPath types.String `tfsdk:"custom_return_path"`
+	OpenTracking     types.Bool   `tfsdk:"open_tracking"`
+	ClickTracking    types.Bool   `tfsdk:"click_tracking"`
+	Tls              types.String `tfsdk:"tls"`
+	Status           types.String `tfsdk:"status"`
+	CreatedAt        types.String `tfsdk:"created_at"`
+	Records          types.List   `tfsdk:"records"`
+}
+
+type domainRecordModel struct {
+	Record   types.String `tfsdk:"record"`
+	Name     types.String `tfsdk:"name"`
+	Type     types.String `tfsdk:"type"`
+	Ttl      types.String `tfsdk:"ttl"`
+	Status   types.String `tfsdk:"status"`
+	Value    types.String `tfsdk:"value"`
+	Priority types.String `tfsdk:"priority"`
+}
+
 func (r *domainResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_domain"
 }
@@ -27,6 +58,101 @@ func (r *domainResource) Metadata(_ context.Context, req resource.MetadataReques
 func (r *domainResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a Resend domain.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				MarkdownDescription: "The domain ID.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"name": schema.StringAttribute{
+				MarkdownDescription: "The domain name.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"region": schema.StringAttribute{
+				MarkdownDescription: "The region where the domain is hosted. Defaults to `us-east-1`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("us-east-1"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"custom_return_path": schema.StringAttribute{
+				MarkdownDescription: "The custom return path for the domain.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"open_tracking": schema.BoolAttribute{
+				MarkdownDescription: "Whether open tracking is enabled.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"click_tracking": schema.BoolAttribute{
+				MarkdownDescription: "Whether click tracking is enabled.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"tls": schema.StringAttribute{
+				MarkdownDescription: "The TLS setting. Can be `enforced` or `opportunistic`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("opportunistic"),
+			},
+			"status": schema.StringAttribute{
+				MarkdownDescription: "The verification status of the domain.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"created_at": schema.StringAttribute{
+				MarkdownDescription: "The timestamp when the domain was created.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"records": schema.ListNestedAttribute{
+				MarkdownDescription: "DNS records required for domain verification.",
+				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"record": schema.StringAttribute{
+							Computed: true,
+						},
+						"name": schema.StringAttribute{
+							Computed: true,
+						},
+						"type": schema.StringAttribute{
+							Computed: true,
+						},
+						"ttl": schema.StringAttribute{
+							Computed: true,
+						},
+						"status": schema.StringAttribute{
+							Computed: true,
+						},
+						"value": schema.StringAttribute{
+							Computed: true,
+						},
+						"priority": schema.StringAttribute{
+							Computed: true,
+						},
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -42,17 +168,214 @@ func (r *domainResource) Configure(_ context.Context, req resource.ConfigureRequ
 	r.client = client
 }
 
-func (r *domainResource) Create(_ context.Context, _ resource.CreateRequest, _ *resource.CreateResponse) {
+func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan domainResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Create domain
+	createReq := &resend.CreateDomainRequest{
+		Name:   plan.Name.ValueString(),
+		Region: plan.Region.ValueString(),
+	}
+	if !plan.CustomReturnPath.IsNull() && !plan.CustomReturnPath.IsUnknown() {
+		createReq.CustomReturnPath = plan.CustomReturnPath.ValueString()
+	}
+
+	createResp, err := r.client.Domains.CreateWithContext(ctx, createReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating domain", err.Error())
+		return
+	}
+
+	domainID := createResp.Id
+
+	// Update tracking/TLS settings (not available in Create API)
+	updateReq := &resend.UpdateDomainRequest{
+		OpenTracking:  plan.OpenTracking.ValueBool(),
+		ClickTracking: plan.ClickTracking.ValueBool(),
+		Tls:           plan.Tls.ValueString(),
+	}
+	_, err = r.client.Domains.UpdateWithContext(ctx, domainID, updateReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error updating domain settings", err.Error())
+		return
+	}
+
+	// Read latest state
+	domain, err := r.client.Domains.GetWithContext(ctx, domainID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading domain", err.Error())
+		return
+	}
+
+	// Map response to state
+	plan.ID = types.StringValue(domain.Id)
+	plan.Name = types.StringValue(domain.Name)
+	plan.Status = types.StringValue(domain.Status)
+	plan.Region = types.StringValue(domain.Region)
+	plan.CreatedAt = types.StringValue(domain.CreatedAt)
+
+	records, diags := flattenRecords(ctx, domain.Records)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.Records = records
+
+	// custom_return_path: use plan value if set, otherwise leave computed
+	if plan.CustomReturnPath.IsNull() || plan.CustomReturnPath.IsUnknown() {
+		plan.CustomReturnPath = types.StringValue("")
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *domainResource) Read(_ context.Context, _ resource.ReadRequest, _ *resource.ReadResponse) {
+func (r *domainResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state domainResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	domain, err := r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading domain", err.Error())
+		return
+	}
+
+	state.Name = types.StringValue(domain.Name)
+	state.Status = types.StringValue(domain.Status)
+	state.Region = types.StringValue(domain.Region)
+	state.CreatedAt = types.StringValue(domain.CreatedAt)
+
+	records, diags := flattenRecords(ctx, domain.Records)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state.Records = records
+
+	// Tracking/TLS fields are not returned by the SDK Domain struct.
+	// Preserve existing state values (set during Create/Update).
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *domainResource) Update(_ context.Context, _ resource.UpdateRequest, _ *resource.UpdateResponse) {
+func (r *domainResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan domainResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var state domainResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateReq := &resend.UpdateDomainRequest{
+		OpenTracking:  plan.OpenTracking.ValueBool(),
+		ClickTracking: plan.ClickTracking.ValueBool(),
+		Tls:           plan.Tls.ValueString(),
+	}
+
+	_, err := r.client.Domains.UpdateWithContext(ctx, state.ID.ValueString(), updateReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error updating domain", err.Error())
+		return
+	}
+
+	// Read latest state
+	domain, err := r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading domain", err.Error())
+		return
+	}
+
+	plan.ID = types.StringValue(domain.Id)
+	plan.Name = types.StringValue(domain.Name)
+	plan.Status = types.StringValue(domain.Status)
+	plan.Region = types.StringValue(domain.Region)
+	plan.CreatedAt = types.StringValue(domain.CreatedAt)
+
+	records, diags := flattenRecords(ctx, domain.Records)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.Records = records
+
+	if plan.CustomReturnPath.IsNull() || plan.CustomReturnPath.IsUnknown() {
+		plan.CustomReturnPath = state.CustomReturnPath
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *domainResource) Delete(_ context.Context, _ resource.DeleteRequest, _ *resource.DeleteResponse) {
+func (r *domainResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state domainResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	_, err := r.client.Domains.RemoveWithContext(ctx, state.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error deleting domain", err.Error())
+		return
+	}
 }
 
-func (r *domainResource) ImportState(_ context.Context, _ resource.ImportStateRequest, _ *resource.ImportStateResponse) {
+func (r *domainResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func flattenRecords(_ context.Context, records []resend.Record) (types.List, diag.Diagnostics) {
+	recordType := types.ObjectType{
+		AttrTypes: domainRecordAttrTypes(),
+	}
+
+	if len(records) == 0 {
+		return types.ListValueMust(recordType, []attr.Value{}), nil
+	}
+
+	var recordValues []attr.Value
+	for _, record := range records {
+		priority := ""
+		if record.Priority != "" {
+			priority = record.Priority.String()
+		}
+
+		recordObj, d := types.ObjectValue(domainRecordAttrTypes(), map[string]attr.Value{
+			"record":   types.StringValue(record.Record),
+			"name":     types.StringValue(record.Name),
+			"type":     types.StringValue(record.Type),
+			"ttl":      types.StringValue(record.Ttl),
+			"status":   types.StringValue(record.Status),
+			"value":    types.StringValue(record.Value),
+			"priority": types.StringValue(priority),
+		})
+		if d.HasError() {
+			return types.ListNull(recordType), d
+		}
+		recordValues = append(recordValues, recordObj)
+	}
+
+	return types.ListValue(recordType, recordValues)
+}
+
+func domainRecordAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"record":   types.StringType,
+		"name":     types.StringType,
+		"type":     types.StringType,
+		"ttl":      types.StringType,
+		"status":   types.StringType,
+		"value":    types.StringType,
+		"priority": types.StringType,
+	}
 }
