@@ -3,8 +3,13 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	resend "github.com/resend/resend-go/v3"
 )
 
@@ -20,6 +25,14 @@ type apiKeyResource struct {
 	client *resend.Client
 }
 
+type apiKeyResourceModel struct {
+	ID         types.String `tfsdk:"id"`
+	Name       types.String `tfsdk:"name"`
+	Permission types.String `tfsdk:"permission"`
+	DomainID   types.String `tfsdk:"domain_id"`
+	Token      types.String `tfsdk:"token"`
+}
+
 func (r *apiKeyResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_api_key"
 }
@@ -27,6 +40,46 @@ func (r *apiKeyResource) Metadata(_ context.Context, req resource.MetadataReques
 func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a Resend API key.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				MarkdownDescription: "The API key ID.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"name": schema.StringAttribute{
+				MarkdownDescription: "The name of the API key.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"permission": schema.StringAttribute{
+				MarkdownDescription: "The permission level. Can be `full_access` or `sending_access`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("full_access"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"domain_id": schema.StringAttribute{
+				MarkdownDescription: "The domain ID to restrict the API key to.",
+				Optional:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"token": schema.StringAttribute{
+				MarkdownDescription: "The API key token. Only available after creation.",
+				Computed:            true,
+				Sensitive:           true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+		},
 	}
 }
 
@@ -42,17 +95,86 @@ func (r *apiKeyResource) Configure(_ context.Context, req resource.ConfigureRequ
 	r.client = client
 }
 
-func (r *apiKeyResource) Create(_ context.Context, _ resource.CreateRequest, _ *resource.CreateResponse) {
+func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan apiKeyResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createReq := &resend.CreateApiKeyRequest{
+		Name:       plan.Name.ValueString(),
+		Permission: plan.Permission.ValueString(),
+	}
+	if !plan.DomainID.IsNull() {
+		createReq.DomainId = plan.DomainID.ValueString()
+	}
+
+	createResp, err := r.client.ApiKeys.CreateWithContext(ctx, createReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating API key", err.Error())
+		return
+	}
+
+	plan.ID = types.StringValue(createResp.Id)
+	plan.Token = types.StringValue(createResp.Token)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *apiKeyResource) Read(_ context.Context, _ resource.ReadRequest, _ *resource.ReadResponse) {
+func (r *apiKeyResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state apiKeyResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// No GET /api-keys/{id} endpoint exists; list all and find by ID.
+	listResp, err := r.client.ApiKeys.ListWithContext(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError("Error listing API keys", err.Error())
+		return
+	}
+
+	var found bool
+	for _, key := range listResp.Data {
+		if key.Id == state.ID.ValueString() {
+			state.Name = types.StringValue(key.Name)
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		// Resource was deleted outside of Terraform
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	// Token is only returned on create; preserve state value.
+	// Permission and DomainID are not returned by List; preserve state values.
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *apiKeyResource) Update(_ context.Context, _ resource.UpdateRequest, _ *resource.UpdateResponse) {
+	// All attributes are ForceNew; Update should never be called.
 }
 
-func (r *apiKeyResource) Delete(_ context.Context, _ resource.DeleteRequest, _ *resource.DeleteResponse) {
+func (r *apiKeyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state apiKeyResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	_, err := r.client.ApiKeys.RemoveWithContext(ctx, state.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error deleting API key", err.Error())
+		return
+	}
 }
 
-func (r *apiKeyResource) ImportState(_ context.Context, _ resource.ImportStateRequest, _ *resource.ImportStateResponse) {
+func (r *apiKeyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
