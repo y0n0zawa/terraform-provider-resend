@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	resend "github.com/resend/resend-go/v3"
 )
@@ -64,10 +66,13 @@ func (r *domainResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 			},
 			"region": schema.StringAttribute{
-				MarkdownDescription: "The region where the domain is hosted. Defaults to `us-east-1`.",
+				MarkdownDescription: "The region where the domain is hosted. Valid values: `us-east-1`, `eu-west-1`, `sa-east-1`, `ap-northeast-1`. Defaults to `us-east-1`.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("us-east-1"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("us-east-1", "eu-west-1", "sa-east-1", "ap-northeast-1"),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -94,10 +99,13 @@ func (r *domainResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Default:             booldefault.StaticBool(false),
 			},
 			"tls": schema.StringAttribute{
-				MarkdownDescription: "The TLS setting. Can be `enforced` or `opportunistic`.",
+				MarkdownDescription: "The TLS setting. Valid values: `enforced`, `opportunistic`. Defaults to `opportunistic`.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("opportunistic"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("enforced", "opportunistic"),
+				},
 			},
 			"status": schema.StringAttribute{
 				MarkdownDescription: "The verification status of the domain.",
@@ -176,7 +184,10 @@ func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	createResp, err := r.client.Domains.CreateWithContext(ctx, createReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating domain", err.Error())
+		resp.Diagnostics.AddError(
+			"Error creating domain",
+			"Could not create domain "+plan.Name.ValueString()+": "+err.Error(),
+		)
 		return
 	}
 
@@ -190,14 +201,20 @@ func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 	_, err = r.client.Domains.UpdateWithContext(ctx, domainID, updateReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating domain settings", err.Error())
+		resp.Diagnostics.AddError(
+			"Error updating domain settings",
+			"Domain "+domainID+" was created but failed to set tracking/TLS settings: "+err.Error(),
+		)
 		return
 	}
 
 	// Read latest state
 	domain, err := r.client.Domains.GetWithContext(ctx, domainID)
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading domain", err.Error())
+		resp.Diagnostics.AddError(
+			"Error reading domain after creation",
+			"Domain "+domainID+" was created but could not be read: "+err.Error(),
+		)
 		return
 	}
 
@@ -232,7 +249,14 @@ func (r *domainResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	domain, err := r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading domain", err.Error())
+		if isNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.AddError(
+			"Error reading domain",
+			"Could not read domain ID "+state.ID.ValueString()+": "+err.Error(),
+		)
 		return
 	}
 
@@ -275,14 +299,20 @@ func (r *domainResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	_, err := r.client.Domains.UpdateWithContext(ctx, state.ID.ValueString(), updateReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating domain", err.Error())
+		resp.Diagnostics.AddError(
+			"Error updating domain",
+			"Could not update domain ID "+state.ID.ValueString()+": "+err.Error(),
+		)
 		return
 	}
 
 	// Read latest state
 	domain, err := r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading domain", err.Error())
+		resp.Diagnostics.AddError(
+			"Error reading domain after update",
+			"Domain "+state.ID.ValueString()+" was updated but could not be read: "+err.Error(),
+		)
 		return
 	}
 
@@ -315,7 +345,13 @@ func (r *domainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 	_, err := r.client.Domains.RemoveWithContext(ctx, state.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error deleting domain", err.Error())
+		if isNotFoundError(err) {
+			return
+		}
+		resp.Diagnostics.AddError(
+			"Error deleting domain",
+			"Could not delete domain ID "+state.ID.ValueString()+": "+err.Error(),
+		)
 		return
 	}
 }

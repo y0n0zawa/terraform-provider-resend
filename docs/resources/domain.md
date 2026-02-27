@@ -35,8 +35,8 @@ resource "resend_domain" "example" {
 - `click_tracking` (Boolean) Whether click tracking is enabled.
 - `custom_return_path` (String) The custom return path for the domain.
 - `open_tracking` (Boolean) Whether open tracking is enabled.
-- `region` (String) The region where the domain is hosted. Defaults to `us-east-1`.
-- `tls` (String) The TLS setting. Can be `enforced` or `opportunistic`.
+- `region` (String) The region where the domain is hosted. Valid values: `us-east-1`, `eu-west-1`, `sa-east-1`, `ap-northeast-1`. Defaults to `us-east-1`.
+- `tls` (String) The TLS setting. Valid values: `enforced`, `opportunistic`. Defaults to `opportunistic`.
 
 ### Read-Only
 

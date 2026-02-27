@@ -36,9 +36,9 @@ resource "resend_api_key" "sending_only" {
 ### Optional
 
 - `domain_id` (String) The domain ID to restrict the API key to.
-- `permission` (String) The permission level. Can be `full_access` or `sending_access`.
+- `permission` (String) The permission level. Valid values: `full_access`, `sending_access`. Defaults to `full_access`.
 
 ### Read-Only
 
 - `id` (String) The API key ID.
-- `token` (String, Sensitive) The API key token. Only available after creation.
+- `token` (String, Sensitive) The API key token. Only available after creation; cannot be retrieved later.

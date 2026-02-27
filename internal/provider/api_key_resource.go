@@ -3,12 +3,14 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	resend "github.com/resend/resend-go/v3"
 )
@@ -56,10 +58,13 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 			},
 			"permission": schema.StringAttribute{
-				MarkdownDescription: "The permission level. Can be `full_access` or `sending_access`.",
+				MarkdownDescription: "The permission level. Valid values: `full_access`, `sending_access`. Defaults to `full_access`.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("full_access"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("full_access", "sending_access"),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -72,7 +77,7 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 			},
 			"token": schema.StringAttribute{
-				MarkdownDescription: "The API key token. Only available after creation.",
+				MarkdownDescription: "The API key token. Only available after creation; cannot be retrieved later.",
 				Computed:            true,
 				Sensitive:           true,
 				PlanModifiers: []planmodifier.String{
@@ -112,7 +117,10 @@ func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	createResp, err := r.client.ApiKeys.CreateWithContext(ctx, createReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating API key", err.Error())
+		resp.Diagnostics.AddError(
+			"Error creating API key",
+			"Could not create API key "+plan.Name.ValueString()+": "+err.Error(),
+		)
 		return
 	}
 
@@ -132,7 +140,10 @@ func (r *apiKeyResource) Read(ctx context.Context, req resource.ReadRequest, res
 	// No GET /api-keys/{id} endpoint exists; list all and find by ID.
 	listResp, err := r.client.ApiKeys.ListWithContext(ctx)
 	if err != nil {
-		resp.Diagnostics.AddError("Error listing API keys", err.Error())
+		resp.Diagnostics.AddError(
+			"Error listing API keys",
+			"Could not list API keys to find ID "+state.ID.ValueString()+": "+err.Error(),
+		)
 		return
 	}
 
@@ -170,7 +181,13 @@ func (r *apiKeyResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 	_, err := r.client.ApiKeys.RemoveWithContext(ctx, state.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error deleting API key", err.Error())
+		if isNotFoundError(err) {
+			return
+		}
+		resp.Diagnostics.AddError(
+			"Error deleting API key",
+			"Could not delete API key ID "+state.ID.ValueString()+": "+err.Error(),
+		)
 		return
 	}
 }
