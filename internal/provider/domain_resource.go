@@ -41,16 +41,6 @@ type domainResourceModel struct {
 	Records          types.List   `tfsdk:"records"`
 }
 
-type domainRecordModel struct {
-	Record   types.String `tfsdk:"record"`
-	Name     types.String `tfsdk:"name"`
-	Type     types.String `tfsdk:"type"`
-	Ttl      types.String `tfsdk:"ttl"`
-	Status   types.String `tfsdk:"status"`
-	Value    types.String `tfsdk:"value"`
-	Priority types.String `tfsdk:"priority"`
-}
-
 func (r *domainResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_domain"
 }
