@@ -72,12 +72,14 @@ func (p *ResendProvider) Resources(_ context.Context) []func() resource.Resource
 	return []func() resource.Resource{
 		NewDomainResource,
 		NewApiKeyResource,
+		NewDomainVerificationResource,
 	}
 }
 
 func (p *ResendProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewDomainDataSource,
+		NewApiKeyDataSource,
 	}
 }
 
