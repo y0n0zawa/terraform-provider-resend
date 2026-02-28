@@ -109,9 +109,14 @@ func (d *domainDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	domain, err := d.client.Domains.GetWithContext(ctx, data.ID.ValueString())
+	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
+		return d.client.Domains.GetWithContext(ctx, data.ID.ValueString())
+	})
 	if err != nil {
-		resp.Diagnostics.AddError("Error reading domain", err.Error())
+		resp.Diagnostics.AddError(
+			"Error reading domain",
+			"Could not read domain ID "+data.ID.ValueString()+": "+err.Error(),
+		)
 		return
 	}
 

@@ -115,7 +115,9 @@ func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest,
 		createReq.DomainId = plan.DomainID.ValueString()
 	}
 
-	createResp, err := r.client.ApiKeys.CreateWithContext(ctx, createReq)
+	createResp, err := retryOnRateLimit(ctx, func() (resend.CreateApiKeyResponse, error) {
+		return r.client.ApiKeys.CreateWithContext(ctx, createReq)
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating API key",
@@ -138,7 +140,9 @@ func (r *apiKeyResource) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	// No GET /api-keys/{id} endpoint exists; list all and find by ID.
-	listResp, err := r.client.ApiKeys.ListWithContext(ctx)
+	listResp, err := retryOnRateLimit(ctx, func() (resend.ListApiKeysResponse, error) {
+		return r.client.ApiKeys.ListWithContext(ctx)
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error listing API keys",
@@ -179,7 +183,9 @@ func (r *apiKeyResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	_, err := r.client.ApiKeys.RemoveWithContext(ctx, state.ID.ValueString())
+	_, err := retryOnRateLimit(ctx, func() (bool, error) {
+		return r.client.ApiKeys.RemoveWithContext(ctx, state.ID.ValueString())
+	})
 	if err != nil {
 		if isNotFoundError(err) {
 			return

@@ -182,7 +182,9 @@ func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest,
 		createReq.CustomReturnPath = plan.CustomReturnPath.ValueString()
 	}
 
-	createResp, err := r.client.Domains.CreateWithContext(ctx, createReq)
+	createResp, err := retryOnRateLimit(ctx, func() (resend.CreateDomainResponse, error) {
+		return r.client.Domains.CreateWithContext(ctx, createReq)
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating domain",
@@ -193,23 +195,34 @@ func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	domainID := createResp.Id
 
-	// Update tracking/TLS settings (not available in Create API)
-	updateReq := &resend.UpdateDomainRequest{
-		OpenTracking:  plan.OpenTracking.ValueBool(),
-		ClickTracking: plan.ClickTracking.ValueBool(),
-		Tls:           plan.Tls.ValueString(),
-	}
-	_, err = r.client.Domains.UpdateWithContext(ctx, domainID, updateReq)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error updating domain settings",
-			"Domain "+domainID+" was created but failed to set tracking/TLS settings: "+err.Error(),
-		)
-		return
+	// Update tracking/TLS settings only when non-default values are specified.
+	// The Create API does not support these fields.
+	needsUpdate := plan.OpenTracking.ValueBool() ||
+		plan.ClickTracking.ValueBool() ||
+		plan.Tls.ValueString() != "opportunistic"
+
+	if needsUpdate {
+		updateReq := &resend.UpdateDomainRequest{
+			OpenTracking:  plan.OpenTracking.ValueBool(),
+			ClickTracking: plan.ClickTracking.ValueBool(),
+			Tls:           plan.Tls.ValueString(),
+		}
+		_, err = retryOnRateLimit(ctx, func() (resend.Domain, error) {
+			return r.client.Domains.UpdateWithContext(ctx, domainID, updateReq)
+		})
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error updating domain settings",
+				"Domain "+domainID+" was created but failed to set tracking/TLS settings: "+err.Error(),
+			)
+			return
+		}
 	}
 
 	// Read latest state
-	domain, err := r.client.Domains.GetWithContext(ctx, domainID)
+	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
+		return r.client.Domains.GetWithContext(ctx, domainID)
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading domain after creation",
@@ -247,7 +260,9 @@ func (r *domainResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	domain, err := r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
+	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
+		return r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
+	})
 	if err != nil {
 		if isNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -297,7 +312,9 @@ func (r *domainResource) Update(ctx context.Context, req resource.UpdateRequest,
 		Tls:           plan.Tls.ValueString(),
 	}
 
-	_, err := r.client.Domains.UpdateWithContext(ctx, state.ID.ValueString(), updateReq)
+	_, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
+		return r.client.Domains.UpdateWithContext(ctx, state.ID.ValueString(), updateReq)
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating domain",
@@ -307,7 +324,9 @@ func (r *domainResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	// Read latest state
-	domain, err := r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
+	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
+		return r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading domain after update",
@@ -343,7 +362,9 @@ func (r *domainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	_, err := r.client.Domains.RemoveWithContext(ctx, state.ID.ValueString())
+	_, err := retryOnRateLimit(ctx, func() (bool, error) {
+		return r.client.Domains.RemoveWithContext(ctx, state.ID.ValueString())
+	})
 	if err != nil {
 		if isNotFoundError(err) {
 			return
