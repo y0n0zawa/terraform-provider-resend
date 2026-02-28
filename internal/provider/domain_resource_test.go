@@ -61,6 +61,27 @@ func TestAccDomainResource_update(t *testing.T) {
 	})
 }
 
+func TestAccDomainResource_region(t *testing.T) {
+	domainName := fmt.Sprintf("tf-test-%s.example.com", acctest.RandStringFromCharSet(8, acctest.CharSetAlphaNum))
+	resourceName := "resend_domain.test"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDomainResourceConfig_region(domainName, "eu-west-1"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "name", domainName),
+					resource.TestCheckResourceAttr(resourceName, "region", "eu-west-1"),
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttrSet(resourceName, "status"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccDomainResource_import(t *testing.T) {
 	domainName := fmt.Sprintf("tf-test-%s.example.com", acctest.RandStringFromCharSet(8, acctest.CharSetAlphaNum))
 	resourceName := "resend_domain.test"
@@ -76,8 +97,8 @@ func TestAccDomainResource_import(t *testing.T) {
 				ResourceName:      resourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
-				// Tracking fields are not returned by the SDK Get endpoint
-				ImportStateVerifyIgnore: []string{"open_tracking", "click_tracking", "tls"},
+				// These fields are not returned by the SDK Get endpoint
+				ImportStateVerifyIgnore: []string{"open_tracking", "click_tracking", "tls", "custom_return_path"},
 			},
 		},
 	})
@@ -89,6 +110,15 @@ resource "resend_domain" "test" {
   name = %[1]q
 }
 `, name)
+}
+
+func testAccDomainResourceConfig_region(name, region string) string {
+	return fmt.Sprintf(`
+resource "resend_domain" "test" {
+  name   = %[1]q
+  region = %[2]q
+}
+`, name, region)
 }
 
 func testAccDomainResourceConfig_tracking(name string) string {
