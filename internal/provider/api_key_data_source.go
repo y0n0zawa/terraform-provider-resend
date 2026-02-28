@@ -51,15 +51,7 @@ func (d *apiKeyDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 }
 
 func (d *apiKeyDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-	client, ok := req.ProviderData.(*resend.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected DataSource Configure Type", "Expected *resend.Client")
-		return
-	}
-	d.client = client
+	d.client = configureClient(req.ProviderData, &resp.Diagnostics)
 }
 
 func (d *apiKeyDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {

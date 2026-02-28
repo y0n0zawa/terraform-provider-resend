@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	resend "github.com/resend/resend-go/v3"
 )
@@ -27,6 +28,21 @@ type domainDataSourceModel struct {
 	Status    types.String `tfsdk:"status"`
 	CreatedAt types.String `tfsdk:"created_at"`
 	Records   types.List   `tfsdk:"records"`
+}
+
+// populateFromDomain sets the common fields from a Resend API domain response.
+func (m *domainDataSourceModel) populateFromDomain(ctx context.Context, domain resend.Domain) diag.Diagnostics {
+	m.ID = types.StringValue(domain.Id)
+	m.Name = types.StringValue(domain.Name)
+	m.Status = types.StringValue(domain.Status)
+	m.Region = types.StringValue(domain.Region)
+	m.CreatedAt = types.StringValue(domain.CreatedAt)
+
+	records, diags := flattenRecords(ctx, domain.Records)
+	if !diags.HasError() {
+		m.Records = records
+	}
+	return diags
 }
 
 func (d *domainDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -91,15 +107,7 @@ func (d *domainDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 }
 
 func (d *domainDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-	client, ok := req.ProviderData.(*resend.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected DataSource Configure Type", "Expected *resend.Client")
-		return
-	}
-	d.client = client
+	d.client = configureClient(req.ProviderData, &resp.Diagnostics)
 }
 
 func (d *domainDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -120,17 +128,10 @@ func (d *domainDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	data.Name = types.StringValue(domain.Name)
-	data.Region = types.StringValue(domain.Region)
-	data.Status = types.StringValue(domain.Status)
-	data.CreatedAt = types.StringValue(domain.CreatedAt)
-
-	records, diags := flattenRecords(ctx, domain.Records)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(data.populateFromDomain(ctx, domain)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	data.Records = records
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

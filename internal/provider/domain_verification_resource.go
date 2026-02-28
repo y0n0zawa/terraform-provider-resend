@@ -51,15 +51,7 @@ func (r *domainVerificationResource) Schema(_ context.Context, _ resource.Schema
 }
 
 func (r *domainVerificationResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-	client, ok := req.ProviderData.(*resend.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected Resource Configure Type", "Expected *resend.Client")
-		return
-	}
-	r.client = client
+	r.client = configureClient(req.ProviderData, &resp.Diagnostics)
 }
 
 func (r *domainVerificationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

@@ -43,6 +43,21 @@ type domainResourceModel struct {
 	Records          types.List   `tfsdk:"records"`
 }
 
+// populateFromDomain sets the common fields from a Resend API domain response.
+func (m *domainResourceModel) populateFromDomain(ctx context.Context, domain resend.Domain) diag.Diagnostics {
+	m.ID = types.StringValue(domain.Id)
+	m.Name = types.StringValue(domain.Name)
+	m.Status = types.StringValue(domain.Status)
+	m.Region = types.StringValue(domain.Region)
+	m.CreatedAt = types.StringValue(domain.CreatedAt)
+
+	records, diags := flattenRecords(ctx, domain.Records)
+	if !diags.HasError() {
+		m.Records = records
+	}
+	return diags
+}
+
 func (r *domainResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_domain"
 }
@@ -155,15 +170,7 @@ func (r *domainResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 }
 
 func (r *domainResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-	client, ok := req.ProviderData.(*resend.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected Resource Configure Type", "Expected *resend.Client")
-		return
-	}
-	r.client = client
+	r.client = configureClient(req.ProviderData, &resp.Diagnostics)
 }
 
 func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -232,18 +239,10 @@ func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	// Map response to state
-	plan.ID = types.StringValue(domain.Id)
-	plan.Name = types.StringValue(domain.Name)
-	plan.Status = types.StringValue(domain.Status)
-	plan.Region = types.StringValue(domain.Region)
-	plan.CreatedAt = types.StringValue(domain.CreatedAt)
-
-	records, diags := flattenRecords(ctx, domain.Records)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(plan.populateFromDomain(ctx, domain)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	plan.Records = records
 
 	// custom_return_path: use plan value if set, otherwise leave computed
 	if plan.CustomReturnPath.IsNull() || plan.CustomReturnPath.IsUnknown() {
@@ -275,17 +274,10 @@ func (r *domainResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	state.Name = types.StringValue(domain.Name)
-	state.Status = types.StringValue(domain.Status)
-	state.Region = types.StringValue(domain.Region)
-	state.CreatedAt = types.StringValue(domain.CreatedAt)
-
-	records, diags := flattenRecords(ctx, domain.Records)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(state.populateFromDomain(ctx, domain)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	state.Records = records
 
 	// Tracking/TLS fields are not returned by the SDK Domain struct.
 	// Preserve existing state values (set during Create/Update).
@@ -335,18 +327,10 @@ func (r *domainResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	plan.ID = types.StringValue(domain.Id)
-	plan.Name = types.StringValue(domain.Name)
-	plan.Status = types.StringValue(domain.Status)
-	plan.Region = types.StringValue(domain.Region)
-	plan.CreatedAt = types.StringValue(domain.CreatedAt)
-
-	records, diags := flattenRecords(ctx, domain.Records)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(plan.populateFromDomain(ctx, domain)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	plan.Records = records
 
 	if plan.CustomReturnPath.IsNull() || plan.CustomReturnPath.IsUnknown() {
 		plan.CustomReturnPath = state.CustomReturnPath
@@ -365,14 +349,7 @@ func (r *domainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	_, err := retryOnRateLimit(ctx, func() (bool, error) {
 		return r.client.Domains.RemoveWithContext(ctx, state.ID.ValueString())
 	})
-	if err != nil {
-		if isNotFoundError(err) {
-			return
-		}
-		resp.Diagnostics.AddError(
-			"Error deleting domain",
-			"Could not delete domain ID "+state.ID.ValueString()+": "+err.Error(),
-		)
+	if handleDeleteError(err, "domain", state.ID.ValueString(), &resp.Diagnostics) {
 		return
 	}
 }

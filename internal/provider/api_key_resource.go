@@ -89,15 +89,7 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 }
 
 func (r *apiKeyResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-	client, ok := req.ProviderData.(*resend.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected Resource Configure Type", "Expected *resend.Client")
-		return
-	}
-	r.client = client
+	r.client = configureClient(req.ProviderData, &resp.Diagnostics)
 }
 
 func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -186,14 +178,7 @@ func (r *apiKeyResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	_, err := retryOnRateLimit(ctx, func() (bool, error) {
 		return r.client.ApiKeys.RemoveWithContext(ctx, state.ID.ValueString())
 	})
-	if err != nil {
-		if isNotFoundError(err) {
-			return
-		}
-		resp.Diagnostics.AddError(
-			"Error deleting API key",
-			"Could not delete API key ID "+state.ID.ValueString()+": "+err.Error(),
-		)
+	if handleDeleteError(err, "API key", state.ID.ValueString(), &resp.Diagnostics) {
 		return
 	}
 }
