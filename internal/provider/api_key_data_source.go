@@ -63,6 +63,35 @@ func (d *apiKeyDataSource) Configure(_ context.Context, req datasource.Configure
 }
 
 func (d *apiKeyDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	// TODO: implement
-	resp.Diagnostics.AddError("Not implemented", "API key data source is not yet implemented")
+	var data apiKeyDataSourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// No GET /api-keys/{id} endpoint; list all and find by ID.
+	listResp, err := retryOnRateLimit(ctx, func() (resend.ListApiKeysResponse, error) {
+		return d.client.ApiKeys.ListWithContext(ctx)
+	})
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error listing API keys",
+			"Could not list API keys to find ID "+data.ID.ValueString()+": "+err.Error(),
+		)
+		return
+	}
+
+	for _, key := range listResp.Data {
+		if key.Id == data.ID.ValueString() {
+			data.Name = types.StringValue(key.Name)
+			data.CreatedAt = types.StringValue(key.CreatedAt)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			return
+		}
+	}
+
+	resp.Diagnostics.AddError(
+		"API key not found",
+		"Could not find API key with ID "+data.ID.ValueString(),
+	)
 }
