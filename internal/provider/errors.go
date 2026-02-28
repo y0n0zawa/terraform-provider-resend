@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	resend "github.com/resend/resend-go/v3"
 )
@@ -14,6 +15,22 @@ const (
 	maxRetries    = 5
 	baseBackoffMs = 1000
 )
+
+// handleDeleteError handles errors from delete operations.
+// Returns true if the caller should return (either not-found or error added to diagnostics).
+func handleDeleteError(err error, resourceType, id string, diagnostics *diag.Diagnostics) bool {
+	if err == nil {
+		return false
+	}
+	if isNotFoundError(err) {
+		return true
+	}
+	diagnostics.AddError(
+		"Error deleting "+resourceType,
+		"Could not delete "+resourceType+" ID "+id+": "+err.Error(),
+	)
+	return true
+}
 
 // isNotFoundError checks if the error indicates a resource was not found.
 // The Resend SDK returns generic error strings, so we check the message.
