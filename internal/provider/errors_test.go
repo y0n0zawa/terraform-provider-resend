@@ -5,8 +5,50 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	resend "github.com/resend/resend-go/v3"
 )
+
+func TestHandleDeleteError(t *testing.T) {
+	tests := []struct {
+		name           string
+		err            error
+		expectReturn   bool
+		expectHasError bool
+	}{
+		{
+			name:           "nil error",
+			err:            nil,
+			expectReturn:   false,
+			expectHasError: false,
+		},
+		{
+			name:           "not found error",
+			err:            errors.New("[ERROR]: not found"),
+			expectReturn:   true,
+			expectHasError: false,
+		},
+		{
+			name:           "other error",
+			err:            errors.New("[ERROR]: internal server error"),
+			expectReturn:   true,
+			expectHasError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var diagnostics diag.Diagnostics
+			result := handleDeleteError(tt.err, "test_resource", "test-id", &diagnostics)
+			if result != tt.expectReturn {
+				t.Errorf("handleDeleteError() = %v, want %v", result, tt.expectReturn)
+			}
+			if diagnostics.HasError() != tt.expectHasError {
+				t.Errorf("diagnostics.HasError() = %v, want %v", diagnostics.HasError(), tt.expectHasError)
+			}
+		})
+	}
+}
 
 func TestIsNotFoundError(t *testing.T) {
 	tests := []struct {
@@ -172,6 +214,20 @@ func TestRetryOnRateLimit_serverErrorThenSuccess(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Errorf("expected 2 calls, got %d", calls)
+	}
+}
+
+func TestRetryOnRateLimit_maxRetriesExhausted(t *testing.T) {
+	calls := 0
+	_, err := retryOnRateLimit(context.Background(), func() (string, error) {
+		calls++
+		return "", &resend.RateLimitError{Message: "rate limited"}
+	})
+	if err == nil {
+		t.Fatal("expected error after max retries")
+	}
+	if calls != maxRetries {
+		t.Errorf("expected %d calls, got %d", maxRetries, calls)
 	}
 }
 
