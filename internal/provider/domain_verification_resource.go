@@ -19,7 +19,7 @@ func NewDomainVerificationResource() resource.Resource {
 }
 
 type domainVerificationResource struct {
-	client *resend.Client
+	domains resend.DomainsSvc
 }
 
 type domainVerificationResourceModel struct {
@@ -51,7 +51,7 @@ func (r *domainVerificationResource) Schema(_ context.Context, _ resource.Schema
 }
 
 func (r *domainVerificationResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	r.client = configureClient(req.ProviderData, &resp.Diagnostics)
+	r.domains = configureDomainsSvc(req.ProviderData, &resp.Diagnostics)
 }
 
 func (r *domainVerificationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -65,7 +65,7 @@ func (r *domainVerificationResource) Create(ctx context.Context, req resource.Cr
 
 	// Trigger verification
 	_, err := retryOnRateLimit(ctx, func() (bool, error) {
-		return r.client.Domains.VerifyWithContext(ctx, domainID)
+		return r.domains.VerifyWithContext(ctx, domainID)
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -77,7 +77,7 @@ func (r *domainVerificationResource) Create(ctx context.Context, req resource.Cr
 
 	// Read domain to get current status
 	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
-		return r.client.Domains.GetWithContext(ctx, domainID)
+		return r.domains.GetWithContext(ctx, domainID)
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -99,7 +99,7 @@ func (r *domainVerificationResource) Read(ctx context.Context, req resource.Read
 	}
 
 	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
-		return r.client.Domains.GetWithContext(ctx, state.DomainID.ValueString())
+		return r.domains.GetWithContext(ctx, state.DomainID.ValueString())
 	})
 	if err != nil {
 		if isNotFoundError(err) {

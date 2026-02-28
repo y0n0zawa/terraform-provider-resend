@@ -18,7 +18,7 @@ func NewDomainDataSource() datasource.DataSource {
 }
 
 type domainDataSource struct {
-	client *resend.Client
+	domains resend.DomainsSvc
 }
 
 type domainDataSourceModel struct {
@@ -107,7 +107,7 @@ func (d *domainDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 }
 
 func (d *domainDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	d.client = configureClient(req.ProviderData, &resp.Diagnostics)
+	d.domains = configureDomainsSvc(req.ProviderData, &resp.Diagnostics)
 }
 
 func (d *domainDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -118,7 +118,7 @@ func (d *domainDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	}
 
 	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
-		return d.client.Domains.GetWithContext(ctx, data.ID.ValueString())
+		return d.domains.GetWithContext(ctx, data.ID.ValueString())
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(

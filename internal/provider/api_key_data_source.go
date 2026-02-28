@@ -17,7 +17,7 @@ func NewApiKeyDataSource() datasource.DataSource {
 }
 
 type apiKeyDataSource struct {
-	client *resend.Client
+	apiKeys resend.ApiKeysSvc
 }
 
 type apiKeyDataSourceModel struct {
@@ -51,7 +51,7 @@ func (d *apiKeyDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 }
 
 func (d *apiKeyDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	d.client = configureClient(req.ProviderData, &resp.Diagnostics)
+	d.apiKeys = configureApiKeysSvc(req.ProviderData, &resp.Diagnostics)
 }
 
 func (d *apiKeyDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -63,7 +63,7 @@ func (d *apiKeyDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 
 	// No GET /api-keys/{id} endpoint; list all and find by ID.
 	listResp, err := retryOnRateLimit(ctx, func() (resend.ListApiKeysResponse, error) {
-		return d.client.ApiKeys.ListWithContext(ctx)
+		return d.apiKeys.ListWithContext(ctx)
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(

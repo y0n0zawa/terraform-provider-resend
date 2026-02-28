@@ -24,7 +24,7 @@ func NewApiKeyResource() resource.Resource {
 }
 
 type apiKeyResource struct {
-	client *resend.Client
+	apiKeys resend.ApiKeysSvc
 }
 
 type apiKeyResourceModel struct {
@@ -89,7 +89,7 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 }
 
 func (r *apiKeyResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	r.client = configureClient(req.ProviderData, &resp.Diagnostics)
+	r.apiKeys = configureApiKeysSvc(req.ProviderData, &resp.Diagnostics)
 }
 
 func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -108,7 +108,7 @@ func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	createResp, err := retryOnRateLimit(ctx, func() (resend.CreateApiKeyResponse, error) {
-		return r.client.ApiKeys.CreateWithContext(ctx, createReq)
+		return r.apiKeys.CreateWithContext(ctx, createReq)
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -133,7 +133,7 @@ func (r *apiKeyResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	// No GET /api-keys/{id} endpoint exists; list all and find by ID.
 	listResp, err := retryOnRateLimit(ctx, func() (resend.ListApiKeysResponse, error) {
-		return r.client.ApiKeys.ListWithContext(ctx)
+		return r.apiKeys.ListWithContext(ctx)
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -176,7 +176,7 @@ func (r *apiKeyResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 
 	_, err := retryOnRateLimit(ctx, func() (bool, error) {
-		return r.client.ApiKeys.RemoveWithContext(ctx, state.ID.ValueString())
+		return r.apiKeys.RemoveWithContext(ctx, state.ID.ValueString())
 	})
 	if handleDeleteError(err, "API key", state.ID.ValueString(), &resp.Diagnostics) {
 		return

@@ -27,7 +27,7 @@ func NewDomainResource() resource.Resource {
 }
 
 type domainResource struct {
-	client *resend.Client
+	domains resend.DomainsSvc
 }
 
 type domainResourceModel struct {
@@ -170,7 +170,7 @@ func (r *domainResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 }
 
 func (r *domainResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	r.client = configureClient(req.ProviderData, &resp.Diagnostics)
+	r.domains = configureDomainsSvc(req.ProviderData, &resp.Diagnostics)
 }
 
 func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -190,7 +190,7 @@ func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	createResp, err := retryOnRateLimit(ctx, func() (resend.CreateDomainResponse, error) {
-		return r.client.Domains.CreateWithContext(ctx, createReq)
+		return r.domains.CreateWithContext(ctx, createReq)
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -215,7 +215,7 @@ func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest,
 			Tls:           plan.Tls.ValueString(),
 		}
 		_, err = retryOnRateLimit(ctx, func() (resend.Domain, error) {
-			return r.client.Domains.UpdateWithContext(ctx, domainID, updateReq)
+			return r.domains.UpdateWithContext(ctx, domainID, updateReq)
 		})
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -228,7 +228,7 @@ func (r *domainResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	// Read latest state
 	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
-		return r.client.Domains.GetWithContext(ctx, domainID)
+		return r.domains.GetWithContext(ctx, domainID)
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -260,7 +260,7 @@ func (r *domainResource) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
-		return r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
+		return r.domains.GetWithContext(ctx, state.ID.ValueString())
 	})
 	if err != nil {
 		if isNotFoundError(err) {
@@ -305,7 +305,7 @@ func (r *domainResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	_, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
-		return r.client.Domains.UpdateWithContext(ctx, state.ID.ValueString(), updateReq)
+		return r.domains.UpdateWithContext(ctx, state.ID.ValueString(), updateReq)
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -317,7 +317,7 @@ func (r *domainResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	// Read latest state
 	domain, err := retryOnRateLimit(ctx, func() (resend.Domain, error) {
-		return r.client.Domains.GetWithContext(ctx, state.ID.ValueString())
+		return r.domains.GetWithContext(ctx, state.ID.ValueString())
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -347,7 +347,7 @@ func (r *domainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 
 	_, err := retryOnRateLimit(ctx, func() (bool, error) {
-		return r.client.Domains.RemoveWithContext(ctx, state.ID.ValueString())
+		return r.domains.RemoveWithContext(ctx, state.ID.ValueString())
 	})
 	if handleDeleteError(err, "domain", state.ID.ValueString(), &resp.Diagnostics) {
 		return
