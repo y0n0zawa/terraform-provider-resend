@@ -105,11 +105,11 @@ func TestFlattenRecords_multiple(t *testing.T) {
 // --- Unit tests for CRUD error branches ---
 
 // domainPlanVals returns tftypes values for a domain resource plan (Create).
-func domainPlanVals(name string, objType tftypes.Object) map[string]tftypes.Value {
+func domainPlanVals(objType tftypes.Object) map[string]tftypes.Value {
 	recordsType := objType.AttributeTypes["records"]
 	return map[string]tftypes.Value{
 		"id":                 tftypes.NewValue(tftypes.String, tftypes.UnknownValue),
-		"name":               tftypes.NewValue(tftypes.String, name),
+		"name":               tftypes.NewValue(tftypes.String, "test.com"),
 		"region":             tftypes.NewValue(tftypes.String, "us-east-1"),
 		"custom_return_path": tftypes.NewValue(tftypes.String, nil),
 		"open_tracking":      tftypes.NewValue(tftypes.Bool, false),
@@ -122,11 +122,11 @@ func domainPlanVals(name string, objType tftypes.Object) map[string]tftypes.Valu
 }
 
 // domainStateVals returns tftypes values for a domain resource state (Read/Update/Delete).
-func domainStateVals(id, name string, objType tftypes.Object) map[string]tftypes.Value {
+func domainStateVals(objType tftypes.Object) map[string]tftypes.Value {
 	recordsType := objType.AttributeTypes["records"]
 	return map[string]tftypes.Value{
-		"id":                 tftypes.NewValue(tftypes.String, id),
-		"name":               tftypes.NewValue(tftypes.String, name),
+		"id":                 tftypes.NewValue(tftypes.String, "test-id"),
+		"name":               tftypes.NewValue(tftypes.String, "test.com"),
 		"region":             tftypes.NewValue(tftypes.String, "us-east-1"),
 		"custom_return_path": tftypes.NewValue(tftypes.String, ""),
 		"open_tracking":      tftypes.NewValue(tftypes.Bool, false),
@@ -150,7 +150,7 @@ func TestDomainResource_Create_apiError(t *testing.T) {
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
 
 	req := resource.CreateRequest{
-		Plan: testResourcePlan(schemaResp, objType, domainPlanVals("test.com", objType)),
+		Plan: testResourcePlan(schemaResp, objType, domainPlanVals(objType)),
 	}
 	resp := resource.CreateResponse{
 		State: emptyResourceState(schemaResp),
@@ -178,7 +178,7 @@ func TestDomainResource_Create_updateError(t *testing.T) {
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
 
 	// Use non-default tracking settings to trigger the update path
-	vals := domainPlanVals("test.com", objType)
+	vals := domainPlanVals(objType)
 	vals["open_tracking"] = tftypes.NewValue(tftypes.Bool, true)
 
 	req := resource.CreateRequest{
@@ -210,7 +210,7 @@ func TestDomainResource_Create_getError(t *testing.T) {
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
 
 	req := resource.CreateRequest{
-		Plan: testResourcePlan(schemaResp, objType, domainPlanVals("test.com", objType)),
+		Plan: testResourcePlan(schemaResp, objType, domainPlanVals(objType)),
 	}
 	resp := resource.CreateResponse{
 		State: emptyResourceState(schemaResp),
@@ -233,7 +233,7 @@ func TestDomainResource_Read_apiError(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, domainStateVals("test-id", "test.com", objType))
+	state := testResourceState(schemaResp, objType, domainStateVals(objType))
 
 	req := resource.ReadRequest{State: state}
 	resp := resource.ReadResponse{State: state}
@@ -255,7 +255,7 @@ func TestDomainResource_Read_notFound(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, domainStateVals("test-id", "test.com", objType))
+	state := testResourceState(schemaResp, objType, domainStateVals(objType))
 
 	req := resource.ReadRequest{State: state}
 	resp := resource.ReadResponse{State: state}
@@ -280,7 +280,7 @@ func TestDomainResource_Update_updateError(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	stateVals := domainStateVals("test-id", "test.com", objType)
+	stateVals := domainStateVals(objType)
 
 	req := resource.UpdateRequest{
 		Plan:  testResourcePlan(schemaResp, objType, stateVals),
@@ -310,7 +310,7 @@ func TestDomainResource_Update_getError(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	stateVals := domainStateVals("test-id", "test.com", objType)
+	stateVals := domainStateVals(objType)
 
 	req := resource.UpdateRequest{
 		Plan:  testResourcePlan(schemaResp, objType, stateVals),
@@ -337,7 +337,7 @@ func TestDomainResource_Delete_apiError(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, domainStateVals("test-id", "test.com", objType))
+	state := testResourceState(schemaResp, objType, domainStateVals(objType))
 
 	req := resource.DeleteRequest{State: state}
 	resp := resource.DeleteResponse{}
@@ -359,7 +359,7 @@ func TestDomainResource_Delete_notFound(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, domainStateVals("test-id", "test.com", objType))
+	state := testResourceState(schemaResp, objType, domainStateVals(objType))
 
 	req := resource.DeleteRequest{State: state}
 	resp := resource.DeleteResponse{}
@@ -482,7 +482,7 @@ func TestDomainResource_Create_success(t *testing.T) {
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
 
 	req := resource.CreateRequest{
-		Plan: testResourcePlan(schemaResp, objType, domainPlanVals("test.com", objType)),
+		Plan: testResourcePlan(schemaResp, objType, domainPlanVals(objType)),
 	}
 	resp := resource.CreateResponse{
 		State: emptyResourceState(schemaResp),
@@ -624,7 +624,7 @@ func TestDomainResource_Read_success(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, domainStateVals("test-id", "test.com", objType))
+	state := testResourceState(schemaResp, objType, domainStateVals(objType))
 
 	req := resource.ReadRequest{State: state}
 	resp := resource.ReadResponse{State: state}
@@ -659,7 +659,7 @@ func TestDomainResource_Update_success(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	stateVals := domainStateVals("test-id", "test.com", objType)
+	stateVals := domainStateVals(objType)
 
 	req := resource.UpdateRequest{
 		Plan:  testResourcePlan(schemaResp, objType, stateVals),
@@ -686,7 +686,7 @@ func TestDomainResource_Delete_success(t *testing.T) {
 
 	r := &domainResource{domains: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, domainStateVals("test-id", "test.com", objType))
+	state := testResourceState(schemaResp, objType, domainStateVals(objType))
 
 	req := resource.DeleteRequest{State: state}
 	resp := resource.DeleteResponse{}

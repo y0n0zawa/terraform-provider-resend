@@ -20,10 +20,10 @@ func apiKeyPlanVals() map[string]tftypes.Value {
 	}
 }
 
-func apiKeyStateVals(id, name string) map[string]tftypes.Value {
+func apiKeyStateVals() map[string]tftypes.Value {
 	return map[string]tftypes.Value{
-		"id":         tftypes.NewValue(tftypes.String, id),
-		"name":       tftypes.NewValue(tftypes.String, name),
+		"id":         tftypes.NewValue(tftypes.String, "test-id"),
+		"name":       tftypes.NewValue(tftypes.String, "test-key"),
 		"permission": tftypes.NewValue(tftypes.String, "full_access"),
 		"domain_id":  tftypes.NewValue(tftypes.String, nil),
 		"token":      tftypes.NewValue(tftypes.String, "re_xxx"),
@@ -65,7 +65,7 @@ func TestApiKeyResource_Read_apiError(t *testing.T) {
 
 	r := &apiKeyResource{apiKeys: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, apiKeyStateVals("test-id", "test-key"))
+	state := testResourceState(schemaResp, objType, apiKeyStateVals())
 
 	req := resource.ReadRequest{State: state}
 	resp := resource.ReadResponse{State: state}
@@ -88,7 +88,7 @@ func TestApiKeyResource_Read_notFound(t *testing.T) {
 
 	r := &apiKeyResource{apiKeys: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, apiKeyStateVals("test-id", "test-key"))
+	state := testResourceState(schemaResp, objType, apiKeyStateVals())
 
 	req := resource.ReadRequest{State: state}
 	resp := resource.ReadResponse{State: state}
@@ -113,7 +113,7 @@ func TestApiKeyResource_Delete_apiError(t *testing.T) {
 
 	r := &apiKeyResource{apiKeys: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, apiKeyStateVals("test-id", "test-key"))
+	state := testResourceState(schemaResp, objType, apiKeyStateVals())
 
 	req := resource.DeleteRequest{State: state}
 	resp := resource.DeleteResponse{}
@@ -135,7 +135,7 @@ func TestApiKeyResource_Delete_notFound(t *testing.T) {
 
 	r := &apiKeyResource{apiKeys: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, apiKeyStateVals("test-id", "test-key"))
+	state := testResourceState(schemaResp, objType, apiKeyStateVals())
 
 	req := resource.DeleteRequest{State: state}
 	resp := resource.DeleteResponse{}
@@ -269,7 +269,7 @@ func TestApiKeyResource_Read_success(t *testing.T) {
 
 	r := &apiKeyResource{apiKeys: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, apiKeyStateVals("test-id", "test-key"))
+	state := testResourceState(schemaResp, objType, apiKeyStateVals())
 
 	req := resource.ReadRequest{State: state}
 	resp := resource.ReadResponse{State: state}
@@ -331,7 +331,7 @@ func TestApiKeyResource_Delete_success(t *testing.T) {
 
 	r := &apiKeyResource{apiKeys: mock}
 	schemaResp, objType := testResourceSchemaAndObjType(ctx, r)
-	state := testResourceState(schemaResp, objType, apiKeyStateVals("test-id", "test-key"))
+	state := testResourceState(schemaResp, objType, apiKeyStateVals())
 
 	req := resource.DeleteRequest{State: state}
 	resp := resource.DeleteResponse{}

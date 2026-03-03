@@ -16,8 +16,3 @@ linters:
 formatters:
   enable:
     - goimports
-
-issues:
-  exclude-dirs:
-    - docs
-    - examples
