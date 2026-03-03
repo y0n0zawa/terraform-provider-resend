@@ -1,0 +1,13 @@
+{
+  "projectTitle": "terraform-provider-resend",
+  "description": "Terraform provider for managing Resend resources such as domains and API keys",
+  "folders": ["docs", "examples"],
+  "excludeFolders": [".claude", ".github", "ignores", "internal"],
+  "excludeFiles": ["CHANGELOG.md", "LICENSE", "go.sum"],
+  "rules": [
+    "This is a Terraform provider for Resend. Use HCL syntax for examples.",
+    "Authentication requires a Resend API key set via the provider block or the RESEND_API_KEY environment variable.",
+    "Available resources: resend_domain, resend_api_key, resend_domain_verification.",
+    "Available data sources: resend_domain, resend_api_key."
+  ]
+}
